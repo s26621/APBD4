@@ -3,8 +3,38 @@ using System.Collections.Generic;
 
 namespace LegacyApp
 {
+    public interface IClientRepository
+    {
+        Client GetById(int idClient);
+    }
+
+    public interface ICreditLimitService
+    {
+        int GetCreditLimit(string lastname, DateTime birthdate);
+    }
+    
     public class UserService
     {
+
+        private readonly int _minAge = 21;
+        private readonly int _minCreditLimit = 500;
+
+        private IClientRepository _clientRepository;
+        private ICreditLimitService _creditLimitService;
+
+        public UserService(IClientRepository clientRepository, ICreditLimitService creditLimitService)
+        {
+            _clientRepository = clientRepository;
+            _creditLimitService = creditLimitService;
+        }
+        
+        [Obsolete]
+        public UserService()
+        {
+            _clientRepository = new ClientRepository();
+            _creditLimitService = new UserCreditService();
+        }
+        
         public bool AddUser(string firstName, string lastName, string email, DateTime dateOfBirth,  int clientId)
         {
             List<Predicate<string>> checkList = new List<Predicate<string>>
@@ -16,15 +46,15 @@ namespace LegacyApp
                     var now = DateTime.Now;
                     var age = now.Year - dateOfBirth.Year;
                     if (now.Month < dateOfBirth.Month || (now.Month == dateOfBirth.Month && now.Day < dateOfBirth.Day)) age--;
-                    return age < 21;
+                    return age < _minAge;
                 }
             };
             foreach (Predicate<string> check in checkList)
             {
                 if (check.Invoke("")) return false;
             }
-            var clientRepository = new ClientRepository();
-            var client = clientRepository.GetById(clientId);
+            
+            var client = _clientRepository.GetById(clientId);
 
             var user = new User
             {
@@ -44,24 +74,20 @@ namespace LegacyApp
                 }
                case "ImportantClient":
                {
-                    using (var userCreditService = new UserCreditService())
-                    {
-                        user.CreditLimit = userCreditService.GetCreditLimit(user.LastName, user.DateOfBirth)*2;
-                    }
+                    
+                   user.CreditLimit = _creditLimitService.GetCreditLimit(user.LastName, user.DateOfBirth)*2;
+                    
                     break;
                 }
                 default:
                 {
                     user.HasCreditLimit = true;
-                    using (var userCreditService = new UserCreditService())
-                    {
-                        user.CreditLimit = userCreditService.GetCreditLimit(user.LastName, user.DateOfBirth);
-                    }
+                    user.CreditLimit = _creditLimitService.GetCreditLimit(user.LastName, user.DateOfBirth);
                     break;
                 }
             }
             UserDataAccess.AddUser(user);
-            return !(user.HasCreditLimit && user.CreditLimit < 500);
+            return !(user.HasCreditLimit && user.CreditLimit < _minCreditLimit);
         }
     }
 }
